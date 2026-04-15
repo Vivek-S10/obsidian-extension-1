@@ -64,4 +64,28 @@ Performs a fast semantic cosine similarity lookup on the SQLite database using `
     }
   ]
 }
+
+## 4. `POST /api/ask`
+Performs a semantic search to retrieve context and then queries a local Ollama instance to generate a natural language response.
+
+**Request Body:**
+```json
+{
+  "query": "What are the key themes in my notes?",
+  "model": "llama3"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "answer": "Based on your notes, the key themes are...",
+  "sources": [
+    {
+      "file_name": "Notes.md",
+      "file_path": "/path/to/Notes.md"
+    }
+  ]
+}
+```
 ```

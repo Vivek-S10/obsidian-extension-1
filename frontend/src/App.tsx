@@ -14,6 +14,11 @@ type Result = {
   distance: number;
 };
 
+type AIResponse = {
+  answer: string;
+  sources: { file_name: string; file_path: string }[];
+};
+
 function App() {
   const [vaultPath, setVaultPath] = useState('');
   const [phase, setPhase] = useState<'entry' | 'validation' | 'search'>('entry');
@@ -23,6 +28,7 @@ function App() {
   
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Result[]>([]);
+  const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
 
   const handleScan = async () => {
     if (!vaultPath) return;
@@ -68,11 +74,36 @@ function App() {
     if (!query) return;
     setLoading(true);
     setError(null);
+    setAiResponse(null);
     try {
       const res = await fetch(`http://localhost:8000/api/search?q=${encodeURIComponent(query)}`);
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       setResults(data.results);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAsk = async () => {
+    if (!query) return;
+    setLoading(true);
+    setError(null);
+    setResults([]);
+    try {
+      const res = await fetch('http://localhost:8000/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'AI Query failed. Is Ollama running?');
+      }
+      const data = await res.json();
+      setAiResponse(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -86,7 +117,7 @@ function App() {
         <h1>Semantic Local Discovery</h1>
         
         {error && (
-          <div style={{ color: 'var(--danger-color)', marginBottom: '1rem', textAlign: 'center' }}>
+          <div style={{ color: 'var(--danger-color)', marginBottom: '1rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '0.5rem' }}>
             {error}
           </div>
         )}
@@ -134,7 +165,7 @@ function App() {
             </p>
 
             <button className="btn btn-primary" onClick={handleEmbed} disabled={loading}>
-              {loading ? 'Building Knowledge Base (this may take a while)...' : 'Build / Sync Knowledge Base'}
+              {loading ? 'Building Knowledge Base...' : 'Build / Sync Knowledge Base'}
             </button>
           </div>
         )}
@@ -147,13 +178,37 @@ function App() {
                 type="text" 
                 value={query} 
                 onChange={(e) => setQuery(e.target.value)} 
-                placeholder="e.g. How do I configure my environment?"
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Search or ask reach natural language questions..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.shiftKey ? handleAsk() : handleSearch();
+                  }
+                }}
               />
             </div>
-            <button className="btn btn-primary" onClick={handleSearch} disabled={loading || !query}>
-              {loading ? 'Searching...' : 'Search'}
-            </button>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button className="btn btn-primary" onClick={handleSearch} disabled={loading || !query.trim()}>
+                {loading ? 'Searching...' : 'Search Only'}
+              </button>
+              <button className="btn btn-ai" onClick={handleAsk} disabled={loading || !query.trim()}>
+                {loading ? 'Thinking...' : 'Ask AI Assistant'}
+              </button>
+            </div>
+
+            {aiResponse && (
+              <div className="ai-response-panel">
+                <div className="ai-badge">AI ASSISTANT</div>
+                <div className="ai-answer">{aiResponse.answer}</div>
+                {aiResponse.sources.length > 0 && (
+                  <div className="ai-sources">
+                    <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>SOURCES:</span>
+                    {Array.from(new Set(aiResponse.sources.map(s => s.file_name))).map((name, i) => (
+                      <span key={i} className="source-tag">{name}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {results.length > 0 && (
               <div className="results-container">
@@ -161,9 +216,6 @@ function App() {
                   <div key={i} className="result-card">
                     <div className="result-file-name">{res.file_name}</div>
                     <div className="result-snippet">"{res.chunk_text}"</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--border-color)', marginTop: '0.5rem', wordBreak: 'break-all' }}>
-                      {res.file_path}
-                    </div>
                     <div className="result-distance">
                       Proximity Score: {(1 - res.distance).toFixed(4)}
                     </div>
@@ -172,7 +224,7 @@ function App() {
               </div>
             )}
             
-            {results.length === 0 && query && !loading && !error && (
+            {results.length === 0 && !aiResponse && query && !loading && !error && (
               <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '1rem' }}>
                 No significant matches found.
               </p>
@@ -180,8 +232,12 @@ function App() {
             
             <button 
               style={{ marginTop: '2rem', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }} 
-              className="btn btn-primary" 
-              onClick={() => setPhase('entry')}
+              className="btn" 
+              onClick={() => {
+                setPhase('entry');
+                setAiResponse(null);
+                setResults([]);
+              }}
             >
               Change Vault Path
             </button>

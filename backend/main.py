@@ -1,5 +1,6 @@
 import os
 import struct
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -27,6 +28,48 @@ class ScanRequest(BaseModel):
 class EmbedRequest(BaseModel):
     vault_path: str
 
+class AskRequest(BaseModel):
+    query: str
+    model: str = "llama3.2:latest"
+
+def serialize_f32(vector):
+    return struct.pack('%sf' % len(vector), *vector)
+
+def perform_search(query: str, limit: int = 5):
+    if not query:
+        return []
+        
+    query_emb = embed_texts([query])[0]
+    query_blob = serialize_f32(query_emb)
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            file_chunks.chunk_text,
+            files.path as file_path,
+            vec_chunks.distance
+        FROM vec_chunks
+        JOIN file_chunks ON file_chunks.chunk_id = vec_chunks.chunk_id
+        JOIN files ON files.id = file_chunks.file_id
+        WHERE chunk_embedding MATCH ?
+          AND k = ?
+        ORDER BY distance
+    """, (query_blob, limit))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append({
+            "file_path": row['file_path'],
+            "file_name": os.path.basename(row['file_path']),
+            "chunk_text": row['chunk_text'],
+            "distance": row['distance']
+        })
+        
+    conn.close()
+    return results
+
 @app.post("/api/scan")
 def scan_vault(req: ScanRequest):
     if not os.path.exists(req.vault_path) or not os.path.isdir(req.vault_path):
@@ -48,9 +91,6 @@ def scan_vault(req: ScanRequest):
             "deleted": len(deleted)
         }
     }
-
-def serialize_f32(vector):
-    return struct.pack('%sf' % len(vector), *vector)
 
 @app.post("/api/embed")
 def embed_vault(req: EmbedRequest):
@@ -118,37 +158,48 @@ def embed_vault(req: EmbedRequest):
     }
 
 @app.get("/api/search")
-def search_vault(q: str, limit: int = 5):
-    if not q:
-        return {"results": []}
-        
-    query_emb = embed_texts([q])[0]
-    query_blob = serialize_f32(query_emb)
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT 
-            file_chunks.chunk_text,
-            files.path as file_path,
-            vec_chunks.distance
-        FROM vec_chunks
-        JOIN file_chunks ON file_chunks.chunk_id = vec_chunks.chunk_id
-        JOIN files ON files.id = file_chunks.file_id
-        WHERE chunk_embedding MATCH ?
-          AND k = ?
-        ORDER BY distance
-    """, (query_blob, limit))
-    
-    results = []
-    for row in cursor.fetchall():
-        results.append({
-            "file_path": row['file_path'],
-            "file_name": os.path.basename(row['file_path']),
-            "chunk_text": row['chunk_text'],
-            "distance": row['distance']
-        })
-        
-    conn.close()
-    return {"results": results}
+def search_api(q: str, limit: int = 5):
+    return {"results": perform_search(q, limit)}
+
+@app.post("/api/ask")
+def ask_api(req: AskRequest):
+    results = perform_search(req.query, limit=5)
+    if not results:
+        return {"answer": "I couldn't find any relevant information in your notes to answer that.", "sources": []}
+
+    context_parts = []
+    sources = []
+    for r in results:
+        context_parts.append(f"Content from {r['file_name']}:\n{r['chunk_text']}")
+        sources.append({"file_name": r['file_name'], "file_path": r['file_path']})
+
+    context_text = "\n\n---\n\n".join(context_parts)
+    prompt = f"""You are a helpful assistant that answers questions based ONLY on the provided local obsidian notes.
+If the answer is not in the context, say that you don't know based on the available notes.
+
+CONTEXT FROM LOCAL NOTES:
+{context_text}
+
+USER QUESTION:
+{req.query}
+
+ANSWER:"""
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": req.model,
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=120
+        )
+        response.raise_for_status()
+        data = response.json()
+        return {
+            "answer": data.get("response", "No response from model."),
+            "sources": sources
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ollama error: {str(e)}")
