@@ -112,138 +112,151 @@ function App() {
   };
 
   return (
-    <div className="app-container">
-      <div className="glass-panel">
-        <h1>Semantic Local Discovery</h1>
-        
-        {error && (
-          <div style={{ color: 'var(--danger-color)', marginBottom: '1rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '0.5rem' }}>
-            {error}
+    <div className="app-layout">
+      {/* Sidebar Mockup */}
+      <div className="sidebar-pane">
+        <div className="sidebar-header">
+          Local Vault
+        </div>
+        <div className="sidebar-nav">
+          <div className={`nav-item ${phase === 'entry' ? 'active' : ''}`} onClick={() => setPhase('entry')}>
+            ⚙️ Configuration
           </div>
-        )}
-
-        {phase === 'entry' && (
-          <div className="phase-container">
-            <div className="input-group">
-              <label>Absolute Vault Path</label>
-              <input 
-                type="text" 
-                value={vaultPath} 
-                onChange={(e) => setVaultPath(e.target.value)} 
-                placeholder="e.g. /Users/name/Documents/Vault"
-                onKeyDown={(e) => e.key === 'Enter' && handleScan()}
-              />
+          {stats && (
+            <div className={`nav-item ${phase === 'validation' ? 'active' : ''}`} onClick={() => setPhase('validation')}>
+              📊 Status
             </div>
-            <button className="btn btn-primary" onClick={handleScan} disabled={loading || !vaultPath}>
-              {loading ? 'Scanning...' : 'Scan Vault'}
-            </button>
-          </div>
-        )}
-
-        {phase === 'validation' && stats && (
-          <div className="phase-container">
-            <h3 style={{ textAlign: 'center' }}>Vault Analysis Complete</h3>
-            <div className="stats-grid">
-              <div className="stat-box">
-                <div className="stat-value">{stats.total_md_files}</div>
-                <div className="stat-label">Total MD Files</div>
-              </div>
-              <div className="stat-box">
-                <div className="stat-value" style={{color: 'var(--success-color)'}}>{stats.new_or_modified}</div>
-                <div className="stat-label">New / Modified</div>
-              </div>
-              <div className="stat-box">
-                <div className="stat-value" style={{color: 'var(--danger-color)'}}>{stats.deleted}</div>
-                <div className="stat-label">Deleted</div>
-              </div>
+          )}
+          {stats && (
+            <div className={`nav-item ${phase === 'search' ? 'active' : ''}`} onClick={() => setPhase('search')}>
+              🔍 Search & AI
             </div>
-            
-            <p style={{color: 'var(--text-secondary)', marginBottom: '1rem', textAlign: 'center'}}>
-              {stats.new_or_modified > 0 
-                ? `${stats.new_or_modified} files need to be processed to sync the knowledge base.` 
-                : 'Knowledge base is completely up to date.'}
-            </p>
+          )}
+        </div>
+      </div>
 
-            <button className="btn btn-primary" onClick={handleEmbed} disabled={loading}>
-              {loading ? 'Building Knowledge Base...' : 'Build / Sync Knowledge Base'}
-            </button>
-          </div>
-        )}
-
-        {phase === 'search' && (
-          <div className="phase-container">
-            <div className="input-group">
-              <label>Natural Language Query</label>
-              <input 
-                type="text" 
-                value={query} 
-                onChange={(e) => setQuery(e.target.value)} 
-                placeholder="Search or ask reach natural language questions..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.shiftKey ? handleAsk() : handleSearch();
-                  }
-                }}
-              />
+      {/* Main Editor/Content Area */}
+      <div className="main-pane">
+        <div className="content-wrapper">
+          <h1 style={{borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem'}}>Semantic Local Discovery</h1>
+          
+          {error && (
+            <div style={{ color: 'var(--danger-color)', border: '1px solid var(--danger-color)', marginBottom: '1rem', padding: '0.75rem', borderRadius: '4px', background: 'rgba(229, 83, 83, 0.1)' }}>
+              {error}
             </div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button className="btn btn-primary" onClick={handleSearch} disabled={loading || !query.trim()}>
-                {loading ? 'Searching...' : 'Search Only'}
-              </button>
-              <button className="btn btn-ai" onClick={handleAsk} disabled={loading || !query.trim()}>
-                {loading ? 'Thinking...' : 'Ask AI Assistant'}
+          )}
+
+          {phase === 'entry' && (
+            <div className="phase-container">
+              <div className="input-group">
+                <label>Absolute Vault Path</label>
+                <input 
+                  type="text" 
+                  value={vaultPath} 
+                  onChange={(e) => setVaultPath(e.target.value)} 
+                  placeholder="e.g. /Users/name/Documents/Vault"
+                  onKeyDown={(e) => e.key === 'Enter' && handleScan()}
+                />
+              </div>
+              <button className="btn btn-primary" onClick={handleScan} disabled={loading || !vaultPath}>
+                {loading ? 'Scanning...' : 'Scan Vault'}
               </button>
             </div>
+          )}
 
-            {aiResponse && (
-              <div className="ai-response-panel">
-                <div className="ai-badge">AI ASSISTANT</div>
-                <div className="ai-answer">{aiResponse.answer}</div>
-                {aiResponse.sources.length > 0 && (
-                  <div className="ai-sources">
-                    <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>SOURCES:</span>
-                    {Array.from(new Set(aiResponse.sources.map(s => s.file_name))).map((name, i) => (
-                      <span key={i} className="source-tag">{name}</span>
-                    ))}
-                  </div>
-                )}
+          {phase === 'validation' && stats && (
+            <div className="phase-container">
+              <h3>Vault Analysis Complete</h3>
+              <div className="stats-grid">
+                <div className="stat-box">
+                  <div className="stat-value">{stats.total_md_files}</div>
+                  <div className="stat-label">Total MD Files</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-value" style={{color: 'var(--success-color)'}}>{stats.new_or_modified}</div>
+                  <div className="stat-label">New / Modified</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-value" style={{color: 'var(--danger-color)'}}>{stats.deleted}</div>
+                  <div className="stat-label">Deleted</div>
+                </div>
               </div>
-            )}
-
-            {results.length > 0 && (
-              <div className="results-container">
-                {results.map((res, i) => (
-                  <div key={i} className="result-card">
-                    <div className="result-file-name">{res.file_name}</div>
-                    <div className="result-snippet">"{res.chunk_text}"</div>
-                    <div className="result-distance">
-                      Proximity Score: {(1 - res.distance).toFixed(4)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {results.length === 0 && !aiResponse && query && !loading && !error && (
-              <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '1rem' }}>
-                No significant matches found.
+              
+              <p style={{color: 'var(--text-secondary)', marginBottom: '1rem'}}>
+                {stats.new_or_modified > 0 
+                  ? `${stats.new_or_modified} files need to be processed to sync the knowledge base.` 
+                  : 'Knowledge base is completely up to date.'}
               </p>
-            )}
-            
-            <button 
-              style={{ marginTop: '2rem', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }} 
-              className="btn" 
-              onClick={() => {
-                setPhase('entry');
-                setAiResponse(null);
-                setResults([]);
-              }}
-            >
-              Change Vault Path
-            </button>
-          </div>
-        )}
 
+              <button className="btn btn-primary" onClick={handleEmbed} disabled={loading}>
+                {loading ? 'Building Knowledge Base...' : 'Build / Sync Knowledge Base'}
+              </button>
+            </div>
+          )}
+
+          {phase === 'search' && (
+            <div className="phase-container">
+              <div className="input-group">
+                <label>Natural Language Query</label>
+                <input 
+                  type="text" 
+                  value={query} 
+                  onChange={(e) => setQuery(e.target.value)} 
+                  placeholder="Search or ask natural language questions..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.shiftKey ? handleAsk() : handleSearch();
+                    }
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button className="btn btn-primary" style={{flex: 1}} onClick={handleSearch} disabled={loading || !query.trim()}>
+                  {loading ? 'Searching...' : 'Search Only'}
+                </button>
+                <button className="btn btn-ai" style={{flex: 1}} onClick={handleAsk} disabled={loading || !query.trim()}>
+                  {loading ? 'Thinking...' : 'Ask AI Assistant'}
+                </button>
+              </div>
+
+              {aiResponse && (
+                <div className="ai-response-panel">
+                  <div className="ai-badge">AI ASSISTANT</div>
+                  <div className="ai-answer">{aiResponse.answer}</div>
+                  {aiResponse.sources.length > 0 && (
+                    <div className="ai-sources">
+                      <span style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>SOURCES:</span>
+                      {Array.from(new Set(aiResponse.sources.map(s => s.file_name))).map((name, i) => (
+                        <span key={i} className="source-tag">{name}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {results.length > 0 && (
+                <div className="results-container">
+                  {results.map((res, i) => (
+                    <div key={i} className="result-card">
+                      <div className="result-file-name">{res.file_name}</div>
+                      <div className="result-snippet">{res.chunk_text}</div>
+                      <div className="result-distance">
+                        Score: {(1 - res.distance).toFixed(4)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {results.length === 0 && !aiResponse && query && !loading && !error && (
+                <p style={{ color: 'var(--text-secondary)', marginTop: '2rem' }}>
+                  No significant matches found.
+                </p>
+              )}
+              
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
