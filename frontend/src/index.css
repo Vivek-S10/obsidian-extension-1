@@ -194,6 +194,24 @@ input[type="text"]:focus {
   cursor: not-allowed;
 }
 
+.btn-ghost {
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  width: auto;
+}
+
 .btn-ai {
   border: 1px solid var(--accent-primary);
   color: var(--accent-primary);
@@ -262,11 +280,17 @@ input[type="text"]:focus {
   padding: 1rem;
 }
 
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
 .result-file-name {
   font-size: 1rem;
   font-weight: 500;
   color: var(--accent-hover);
-  margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -347,6 +371,17 @@ input[type="text"]:focus {
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
   font-family: var(--font-mono);
+  transition: all 0.15s ease;
+}
+
+.source-tag.clickable {
+  cursor: pointer;
+}
+
+.source-tag.clickable:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--bg-hover);
 }
 
 /* Utilities */

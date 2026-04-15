@@ -111,6 +111,11 @@ function App() {
     }
   };
 
+  const handleDeepLink = (path: string) => {
+    const uri = `obsidian://open?path=${encodeURIComponent(path)}`;
+    window.location.href = uri;
+  };
+
   return (
     <div className="app-layout">
       {/* Sidebar Mockup */}
@@ -226,8 +231,19 @@ function App() {
                   {aiResponse.sources.length > 0 && (
                     <div className="ai-sources">
                       <span style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>SOURCES:</span>
-                      {Array.from(new Set(aiResponse.sources.map(s => s.file_name))).map((name, i) => (
-                        <span key={i} className="source-tag">{name}</span>
+                      {aiResponse.sources.reduce((acc: any[], current) => {
+                        if (!acc.find(item => item.file_path === current.file_path)) {
+                          acc.push(current);
+                        }
+                        return acc;
+                      }, []).map((source, i) => (
+                        <span 
+                          key={i} 
+                          className="source-tag clickable" 
+                          onClick={() => handleDeepLink(source.file_path)}
+                        >
+                          {source.file_name}
+                        </span>
                       ))}
                     </div>
                   )}
@@ -238,7 +254,12 @@ function App() {
                 <div className="results-container">
                   {results.map((res, i) => (
                     <div key={i} className="result-card">
-                      <div className="result-file-name">{res.file_name}</div>
+                      <div className="result-header">
+                        <div className="result-file-name">{res.file_name}</div>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleDeepLink(res.file_path)}>
+                          Open in Obsidian
+                        </button>
+                      </div>
                       <div className="result-snippet">{res.chunk_text}</div>
                       <div className="result-distance">
                         Score: {(1 - res.distance).toFixed(4)}
