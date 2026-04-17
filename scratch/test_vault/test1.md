@@ -1,0 +1,1 @@
+This is test document 1 for MPI.

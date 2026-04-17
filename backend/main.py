@@ -1,6 +1,10 @@
 import os
 import struct
 import requests
+import tempfile
+import json
+import subprocess
+import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +13,8 @@ from database import init_db, get_db
 from pipeline import scan_directory, chunk_text, embed_texts
 
 app = FastAPI(title="Semantic Local Discovery")
+
+NUM_MPI_WORKERS = int(os.environ.get("NUM_MPI_WORKERS", "4"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -101,55 +107,44 @@ def embed_vault(req: EmbedRequest):
     cursor = conn.cursor()
     cursor.execute("SELECT path, hash FROM files")
     existing_files = {row['path']: row['hash'] for row in cursor.fetchall()}
+    conn.close()
     
     new_or_mod, deleted, _ = scan_directory(req.vault_path, existing_files)
     
-    for d_path in deleted:
-        cursor.execute("SELECT id FROM files WHERE path=?", (d_path,))
-        row = cursor.fetchone()
-        if row:
-            f_id = row['id']
-            cursor.execute("DELETE FROM vec_chunks WHERE chunk_id IN (SELECT chunk_id FROM file_chunks WHERE file_id=?)", (f_id,))
-            cursor.execute("DELETE FROM file_chunks WHERE file_id=?", (f_id,))
-            cursor.execute("DELETE FROM files WHERE id=?", (f_id,))
+    if not new_or_mod and not deleted:
+        return {
+            "status": "completed",
+            "files_processed": 0,
+            "chunks_created": 0,
+            "message": "No changes detected."
+        }
+        
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.json') as f:
+        json.dump({
+            "new_or_mod": new_or_mod,
+            "deleted": deleted
+        }, f)
+        temp_file_name = f.name
+        
+    try:
+        worker_script = os.path.join(os.path.dirname(__file__), "mpi_worker.py")
+        cmd = ["/opt/homebrew/bin/mpirun", "-n", str(NUM_MPI_WORKERS + 1), sys.executable, worker_script, "--task-file", temp_file_name]
+        subprocess.run(cmd, check=True)
+        
+        with open(temp_file_name + ".out", "r") as f:
+            stats = json.load(f)
             
-    files_processed = 0
-    chunks_created = 0
-    
-    for path, f_hash, mtime in new_or_mod:
-        cursor.execute("SELECT id FROM files WHERE path=?", (path,))
-        row = cursor.fetchone()
-        if row:
-            f_id = row['id']
-            cursor.execute("DELETE FROM vec_chunks WHERE chunk_id IN (SELECT chunk_id FROM file_chunks WHERE file_id=?)", (f_id,))
-            cursor.execute("DELETE FROM file_chunks WHERE file_id=?", (f_id,))
-            cursor.execute("UPDATE files SET hash=?, last_modified=? WHERE id=?", (f_hash, mtime, f_id))
-        else:
-            cursor.execute("INSERT INTO files (path, hash, last_modified) VALUES (?, ?, ?)", (path, f_hash, mtime))
-            f_id = cursor.lastrowid
-            
-        try:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                text = f.read()
-        except Exception:
-            continue
-            
-        chunks = chunk_text(text)
-        if not chunks:
-            continue
-            
-        embeddings = embed_texts(chunks)
-        for i, chunk in enumerate(chunks):
-            cursor.execute("INSERT INTO file_chunks (file_id, chunk_text) VALUES (?, ?)", (f_id, chunk))
-            chunk_id = cursor.lastrowid
-            emb_blob = serialize_f32(embeddings[i])
-            cursor.execute("INSERT INTO vec_chunks (chunk_id, chunk_embedding) VALUES (?, ?)", (chunk_id, emb_blob))
-            chunks_created += 1
-            
-        files_processed += 1
-        conn.commit()
-
-    conn.close()
+        files_processed = stats.get("files_processed", 0)
+        chunks_created = stats.get("chunks_created", 0)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"MPI embedding subprocess failed: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MPI embedding failed: {str(e)}")
+    finally:
+        if os.path.exists(temp_file_name):
+            os.remove(temp_file_name)
+        if os.path.exists(temp_file_name + ".out"):
+            os.remove(temp_file_name + ".out")
     
     return {
         "status": "completed",

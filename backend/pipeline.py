@@ -1,14 +1,18 @@
 import os
 import hashlib
-from sentence_transformers import SentenceTransformer
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+_model = None
 
-# Initialize model (downloads on first run if needed)
-logger.info("Loading SentenceTransformer model...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
+def get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        logger.info("Loading SentenceTransformer model...")
+        _model = SentenceTransformer('all-MiniLM-L6-v2')
+    return _model
 
 def get_file_hash(filepath):
     hasher = hashlib.md5()
@@ -59,5 +63,6 @@ def chunk_text(text, chunk_size=500, overlap=50):
 def embed_texts(texts):
     if not texts:
         return []
-    embeddings = model.encode(texts)
+    m = get_model()
+    embeddings = m.encode(texts)
     return embeddings.tolist()
