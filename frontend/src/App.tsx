@@ -41,6 +41,7 @@ function App() {
 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [discovering, setDiscovering] = useState(false);
+  const [numWorkers, setNumWorkers] = useState(4);
   const handleScan = async () => {
     if (!vaultPath) return;
     setLoading(true);
@@ -69,7 +70,10 @@ function App() {
       const res = await fetch('http://localhost:8000/api/embed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vault_path: vaultPath })
+        body: JSON.stringify({ 
+          vault_path: vaultPath,
+          num_workers: numWorkers
+        })
       });
       if (!res.ok) throw new Error('Embedding failed. Check server logs.');
       await res.json();
@@ -192,7 +196,7 @@ function App() {
             </div>
           )}
           {stats && (
-            <div className={`nav-item ${phase === 'discover' ? 'active' : ''}`} onClick={() => { setPhase('discover'); loadSuggestions(); }}>
+            <div className={`nav-item ${phase === 'discover' ? 'active' : ''}`} onClick={() => setPhase('discover')}>
               💡 Discover Links
             </div>
           )}
@@ -221,6 +225,25 @@ function App() {
                   placeholder="e.g. /Users/name/Documents/Vault"
                   onKeyDown={(e) => e.key === 'Enter' && handleScan()}
                 />
+              </div>
+              <div className="input-group">
+                <label>Parallel Workers (Max 7)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="7" 
+                    value={numWorkers} 
+                    onChange={(e) => setNumWorkers(parseInt(e.target.value))}
+                    style={{ flex: 1, accentColor: 'var(--accent-primary)' }}
+                  />
+                  <span style={{ minWidth: '2rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                    {numWorkers}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Number of MPI worker processes used for high-speed embedding generation.
+                </p>
               </div>
               <button className="btn btn-primary" onClick={handleScan} disabled={loading || !vaultPath}>
                 {loading ? 'Scanning...' : 'Scan Vault'}
@@ -339,21 +362,35 @@ function App() {
 
           {phase === 'discover' && (
             <div className="phase-container">
-              <h3>Hidden Connections</h3>
-              <p style={{ color: 'var(--text-secondary)' }}>
-                The AI has proactively found these related notes that are not yet linked.
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <h3>Hidden Connections</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    Find unlinked notes that share semantic themes.
+                  </p>
+                </div>
+                <button 
+                  className="btn btn-ai" 
+                  onClick={loadSuggestions} 
+                  disabled={discovering}
+                >
+                  {discovering ? 'Analyzing...' : '💡 Run Discovery Wizard'}
+                </button>
+              </div>
 
               {discovering && (
-                <div style={{ color: 'var(--accent-primary)', marginTop: '1rem' }}>
-                  Analyzing vector distances and asking Ollama for justifications...
+                <div style={{ color: 'var(--accent-primary)', marginTop: '1rem', textAlign: 'center', padding: '2rem' }}>
+                  <div className="ai-badge" style={{ marginBottom: '1rem' }}>Vector Intelligence</div>
+                  <p>Analyzing vector distances and asking Ollama for justifications...</p>
                 </div>
               )}
 
               {!discovering && suggestions.length === 0 && (
-                <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
-                  No new strong connections found at this time.
-                </p>
+                <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--bg-secondary)', border: '1px dashed var(--border-color)' }}>
+                  <p style={{ color: 'var(--text-secondary)' }}>
+                    No connections found yet. Click <strong>Run Discovery Wizard</strong> to start.
+                  </p>
+                </div>
               )}
 
               {!discovering && suggestions.length > 0 && (

@@ -33,6 +33,7 @@ class ScanRequest(BaseModel):
 
 class EmbedRequest(BaseModel):
     vault_path: str
+    num_workers: int = 4
 
 class AskRequest(BaseModel):
     query: str
@@ -126,9 +127,14 @@ def embed_vault(req: EmbedRequest):
         }, f)
         temp_file_name = f.name
         
+    # Enforce system limit of 7 workers. Default to 4 if exceeded or not provided.
+    eff_workers = req.num_workers
+    if eff_workers > 7 or eff_workers < 1:
+        eff_workers = 4
+        
     try:
         worker_script = os.path.join(os.path.dirname(__file__), "mpi_worker.py")
-        cmd = ["/opt/homebrew/bin/mpirun", "-n", str(NUM_MPI_WORKERS + 1), sys.executable, worker_script, "--task-file", temp_file_name]
+        cmd = ["/opt/homebrew/bin/mpirun", "-n", str(eff_workers + 1), sys.executable, worker_script, "--task-file", temp_file_name]
         subprocess.run(cmd, check=True)
         
         with open(temp_file_name + ".out", "r") as f:
