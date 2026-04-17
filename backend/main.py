@@ -5,6 +5,9 @@ import tempfile
 import json
 import subprocess
 import sys
+import multiprocessing
+import math
+import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -41,6 +44,12 @@ class AskRequest(BaseModel):
 
 def serialize_f32(vector):
     return struct.pack('%sf' % len(vector), *vector)
+
+def dummy_cpu_hog(stop_event):
+    """Simple worker that consumes 100% CPU until signalled to stop."""
+    while not stop_event.is_set():
+        # High-intensity float math
+        _ = [math.sqrt(i) for i in range(100000)]
 
 def perform_search(query: str, limit: int = 5):
     if not query:
@@ -206,22 +215,40 @@ ANSWER:"""
         raise HTTPException(status_code=500, detail=f"Ollama error: {str(e)}")
 
 @app.get("/api/discover_links")
-def discover_links(limit: int = 5):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT chunk_id, chunk_text, file_id FROM file_chunks ORDER BY chunk_id DESC LIMIT 50
-    """)
-    samples = cursor.fetchall()
+def discover_links(limit: int = 5, intensity: int = 4):
+    stop_event = multiprocessing.Event()
+    dummies = []
     
-    suggestions = []
-    seen_pairs = set()
-    
-    for sample in samples:
-        if len(suggestions) >= limit:
-            break
-            
-        c_id = sample['chunk_id']
+    # Spawn intensity-1 dummy background processes
+    num_dummies = max(0, intensity - 1)
+    for _ in range(num_dummies):
+        p = multiprocessing.Process(target=dummy_cpu_hog, args=(stop_event,))
+        p.start()
+        dummies.append(p)
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT chunk_id, chunk_text, file_id FROM file_chunks ORDER BY chunk_id DESC LIMIT 50
+        """)
+        samples = cursor.fetchall()
+        
+        suggestions = []
+        seen_pairs = set()
+        
+        for sample in samples:
+            if len(suggestions) >= limit:
+                break
+                
+            # Simulate "slow" processing if intensity is 1
+            if intensity <= 1:
+                time.sleep(0.5)
+
+            elif intensity <= 3:
+                time.sleep(0.2)
+                
+            c_id = sample['chunk_id']
         f1_id = sample['file_id']
         t1 = sample['chunk_text']
         
@@ -293,7 +320,13 @@ def discover_links(limit: int = 5):
                 "reason": reason
             })
             
-    conn.close()
+    finally:
+        conn.close()
+        stop_event.set()
+        for p in dummies:
+            p.terminate()
+            p.join()
+            
     return {"suggestions": suggestions}
 
 class LinkPairRequest(BaseModel):

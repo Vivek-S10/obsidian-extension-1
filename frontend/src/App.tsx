@@ -42,6 +42,7 @@ function App() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [discovering, setDiscovering] = useState(false);
   const [numWorkers, setNumWorkers] = useState(4);
+  const [discoveryIntensity, setDiscoveryIntensity] = useState(4);
   const handleScan = async () => {
     if (!vaultPath) return;
     setLoading(true);
@@ -135,7 +136,7 @@ function App() {
     setDiscovering(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:8000/api/discover_links?limit=5');
+      const res = await fetch(`http://localhost:8000/api/discover_links?limit=5&intensity=${discoveryIntensity}`);
       if (!res.ok) throw new Error('Failed to discover links');
       const data = await res.json();
       setSuggestions(data.suggestions || []);
@@ -368,6 +369,20 @@ function App() {
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                     Find unlinked notes that share semantic themes.
                   </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flex: 1, paddingLeft: '1.5rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>P Count (1-5)</label>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="5" 
+                      value={discoveryIntensity} 
+                      onChange={(e) => setDiscoveryIntensity(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--accent-primary)', marginTop: '0.25rem' }}
+                    />
+                  </div>
+                  <span style={{ fontWeight: 'bold', color: 'var(--accent-primary)', fontSize: '1.2rem', minWidth: '1.5rem' }}>{discoveryIntensity}</span>
                 </div>
                 <button 
                   className="btn btn-ai" 
