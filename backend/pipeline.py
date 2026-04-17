@@ -35,7 +35,14 @@ def scan_directory(vault_path, existing_files):
                     if full_path not in existing_files or existing_files[full_path] != file_hash:
                         new_or_modified.append((full_path, file_hash, os.path.getmtime(full_path)))
                         
-    deleted = [path for path in existing_files if path not in found_paths]
+    vault_path_abs = os.path.abspath(vault_path)
+    deleted = []
+    for path in existing_files:
+        path_abs = os.path.abspath(path)
+        if path_abs.startswith(vault_path_abs):
+            if path not in found_paths:
+                deleted.append(path)
+                
     return new_or_modified, deleted, len(found_paths)
 
 def chunk_text(text, chunk_size=500, overlap=50):

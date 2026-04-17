@@ -89,3 +89,54 @@ Performs a semantic search to retrieve context and then queries a local Ollama i
 }
 ```
 ```
+
+## 5. `GET /api/discover_links`
+Calculates or retrieves top semantic file pairs.
+
+**Response (200 OK):**
+```json
+{
+  "suggestions": [
+    {
+      "file1_path": "/path/A.md",
+      "file1_name": "A.md",
+      "file2_path": "/path/B.md",
+      "file2_name": "B.md",
+      "distance": 0.1,
+      "reason": "Both notes discuss XYZ."
+    }
+  ]
+}
+```
+
+## 6. `POST /api/confirm_link`
+Appends a bidirectional link to both files.
+
+**Request Body:**
+```json
+{
+  "file1_path": "/path/A.md",
+  "file2_path": "/path/B.md"
+}
+```
+
+**Response (200 OK):**
+```json
+{"status": "success"}
+```
+
+## 7. `POST /api/dismiss_link`
+Dismisses a suggested link pair.
+
+**Request Body:**
+```json
+{
+  "file1_path": "/path/A.md",
+  "file2_path": "/path/B.md"
+}
+```
+
+**Response (200 OK):**
+```json
+{"status": "success"}
+```

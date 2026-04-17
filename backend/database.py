@@ -42,6 +42,14 @@ def init_db():
             )
         """)
         
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dismissed_links (
+            file1_path TEXT,
+            file2_path TEXT,
+            PRIMARY KEY (file1_path, file2_path)
+        )
+    """)
+        
     conn.commit()
     conn.close()
 

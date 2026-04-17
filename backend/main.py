@@ -203,3 +203,120 @@ ANSWER:"""
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ollama error: {str(e)}")
+
+@app.get("/api/discover_links")
+def discover_links(limit: int = 5):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT chunk_id, chunk_text, file_id FROM file_chunks ORDER BY chunk_id DESC LIMIT 50
+    """)
+    samples = cursor.fetchall()
+    
+    suggestions = []
+    seen_pairs = set()
+    
+    for sample in samples:
+        if len(suggestions) >= limit:
+            break
+            
+        c_id = sample['chunk_id']
+        f1_id = sample['file_id']
+        t1 = sample['chunk_text']
+        
+        cursor.execute("""
+            SELECT b.file_id, b.chunk_text, vec_chunks.distance
+            FROM vec_chunks
+            JOIN file_chunks b ON b.chunk_id = vec_chunks.chunk_id
+            WHERE chunk_embedding MATCH (
+                SELECT chunk_embedding FROM vec_chunks WHERE chunk_id = ?
+            ) AND k = 10 AND b.file_id != ? AND distance < 0.15
+            ORDER BY distance
+        """, (c_id, f1_id))
+        
+        matches = cursor.fetchall()
+        for m in matches:
+            if len(suggestions) >= limit:
+                break
+            f2_id = m['file_id']
+            pair = tuple(sorted((f1_id, f2_id)))
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            
+            cursor.execute("SELECT path FROM files WHERE id=?", (f1_id,))
+            path1 = cursor.fetchone()['path']
+            cursor.execute("SELECT path FROM files WHERE id=?", (f2_id,))
+            path2 = cursor.fetchone()['path']
+            
+            cursor.execute("SELECT 1 FROM dismissed_links WHERE (file1_path=? AND file2_path=?) OR (file1_path=? AND file2_path=?)", (path1, path2, path2, path1))
+            if cursor.fetchone():
+                continue
+                
+            try:
+                with open(path1, 'r', encoding='utf-8') as f:
+                    c1 = f.read()
+                with open(path2, 'r', encoding='utf-8') as f:
+                    c2 = f.read()
+                basename_1 = os.path.basename(path1)
+                basename_2 = os.path.basename(path2)
+                if f"[[Related: {basename_2}]]" in c1 or f"[[Related: {basename_1}]]" in c2:
+                    continue
+            except Exception:
+                continue
+                
+            t2 = m['chunk_text']
+            prompt = f"Given these two excerpts from different notes:\nExcerpt 1: {t1}\nExcerpt 2: {t2}\nWhy are they related? Answer in ONE short sentence. Be concise and direct."
+            reason = "Highly related content based on vector similarity."
+            try:
+                response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": "llama3.2:latest",
+                        "prompt": prompt,
+                        "stream": False
+                    },
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    reason = response.json().get('response', reason).strip()
+            except Exception:
+                pass
+                
+            suggestions.append({
+                "file1_path": path1,
+                "file1_name": os.path.basename(path1),
+                "file2_path": path2,
+                "file2_name": os.path.basename(path2),
+                "distance": m['distance'],
+                "reason": reason
+            })
+            
+    conn.close()
+    return {"suggestions": suggestions}
+
+class LinkPairRequest(BaseModel):
+    file1_path: str
+    file2_path: str
+
+@app.post("/api/confirm_link")
+def confirm_link(req: LinkPairRequest):
+    try:
+        basename_1 = os.path.basename(req.file1_path)
+        basename_2 = os.path.basename(req.file2_path)
+        with open(req.file1_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n\n[[Related: {basename_2}]]\n")
+        with open(req.file2_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n\n[[Related: {basename_1}]]\n")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dismiss_link")
+def dismiss_link(req: LinkPairRequest):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO dismissed_links (file1_path, file2_path) VALUES (?, ?)", (req.file1_path, req.file2_path))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}

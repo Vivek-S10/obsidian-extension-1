@@ -19,9 +19,18 @@ type AIResponse = {
   sources: { file_name: string; file_path: string }[];
 };
 
+type Suggestion = {
+  file1_path: string;
+  file1_name: string;
+  file2_path: string;
+  file2_name: string;
+  distance: number;
+  reason: string;
+};
+
 function App() {
   const [vaultPath, setVaultPath] = useState('');
-  const [phase, setPhase] = useState<'entry' | 'validation' | 'search'>('entry');
+  const [phase, setPhase] = useState<'entry' | 'validation' | 'search' | 'discover'>('entry');
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +39,8 @@ function App() {
   const [results, setResults] = useState<Result[]>([]);
   const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
 
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [discovering, setDiscovering] = useState(false);
   const handleScan = async () => {
     if (!vaultPath) return;
     setLoading(true);
@@ -116,6 +127,49 @@ function App() {
     window.location.href = uri;
   };
 
+  const loadSuggestions = async () => {
+    setDiscovering(true);
+    setError(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/discover_links?limit=5');
+      if (!res.ok) throw new Error('Failed to discover links');
+      const data = await res.json();
+      setSuggestions(data.suggestions || []);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const confirmLink = async (s: Suggestion) => {
+    try {
+      const res = await fetch('http://localhost:8000/api/confirm_link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file1_path: s.file1_path, file2_path: s.file2_path })
+      });
+      if (!res.ok) throw new Error('Failed to confirm link');
+      setSuggestions(prev => prev.filter(item => item !== s));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const dismissLink = async (s: Suggestion) => {
+    try {
+      const res = await fetch('http://localhost:8000/api/dismiss_link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file1_path: s.file1_path, file2_path: s.file2_path })
+      });
+      if (!res.ok) throw new Error('Failed to dismiss link');
+      setSuggestions(prev => prev.filter(item => item !== s));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="app-layout">
       {/* Sidebar Mockup */}
@@ -135,6 +189,11 @@ function App() {
           {stats && (
             <div className={`nav-item ${phase === 'search' ? 'active' : ''}`} onClick={() => setPhase('search')}>
               🔍 Search & AI
+            </div>
+          )}
+          {stats && (
+            <div className={`nav-item ${phase === 'discover' ? 'active' : ''}`} onClick={() => { setPhase('discover'); loadSuggestions(); }}>
+              💡 Discover Links
             </div>
           )}
         </div>
@@ -277,6 +336,63 @@ function App() {
               
             </div>
           )}
+
+          {phase === 'discover' && (
+            <div className="phase-container">
+              <h3>Hidden Connections</h3>
+              <p style={{ color: 'var(--text-secondary)' }}>
+                The AI has proactively found these related notes that are not yet linked.
+              </p>
+
+              {discovering && (
+                <div style={{ color: 'var(--accent-primary)', marginTop: '1rem' }}>
+                  Analyzing vector distances and asking Ollama for justifications...
+                </div>
+              )}
+
+              {!discovering && suggestions.length === 0 && (
+                <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
+                  No new strong connections found at this time.
+                </p>
+              )}
+
+              {!discovering && suggestions.length > 0 && (
+                <div className="results-container">
+                  {suggestions.map((s, i) => (
+                    <div key={i} className="result-card">
+                      <div className="result-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+                          <span className="source-tag">{s.file1_name}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>↔</span>
+                          <span className="source-tag">{s.file2_name}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => dismissLink(s)}>
+                            Dismiss
+                          </button>
+                          <button className="btn btn-primary btn-sm" onClick={() => confirmLink(s)}>
+                            Confirm Link
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="ai-response-panel" style={{ marginTop: '1rem', padding: '1rem' }}>
+                        <div className="ai-badge" style={{ position: 'relative', display: 'inline-block', marginBottom: '0.5rem', top: 0, right: 0 }}>OLLAMA REASONING</div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                          {s.reason}
+                        </div>
+                      </div>
+                      
+                      <div className="result-distance" style={{ marginTop: '0.5rem' }}>
+                        Vector Distance: {s.distance.toFixed(3)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
     </div>
